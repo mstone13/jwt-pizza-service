@@ -27,6 +27,25 @@ beforeAll(async () => {
   adminToken = loginRes.body.token;
 });
 
+afterAll(async () => {
+  if (!adminUser) {
+    return;
+  }
+
+  const connection = await DB.getConnection();
+  try {
+    const users = await DB.query(connection, 'SELECT id FROM user WHERE email=?', [adminUser.email]);
+    if (users.length > 0) {
+      const userId = users[0].id;
+      await DB.query(connection, 'DELETE FROM auth WHERE userId=?', [userId]);
+      await DB.query(connection, 'DELETE FROM userRole WHERE userId=?', [userId]);
+      await DB.query(connection, 'DELETE FROM user WHERE id=?', [userId]);
+    }
+  } finally {
+    connection.end();
+  }
+});
+
 test('admin can create, list, and delete franchises', async () => {
   const franchiseName = `Pizza ${randomName()}`;
 
@@ -65,5 +84,45 @@ test('admin can create, list, and delete franchises', async () => {
 
   expect(deleteRes.status).toBe(200);
   expect(deleteRes.body).toEqual({ message: 'franchise deleted' });
+});
+
+test("admin can create and delete a store named World's Greatest Pizza", async () => {
+  const franchiseName = `Pizza ${randomName()}`;
+  const storeName = "World's Greatest Pizza";
+  const createStore = jest.spyOn(DB, 'createStore');
+  const deleteStore = jest.spyOn(DB, 'deleteStore');
+  let franchiseId;
+
+  try {
+    const franchiseRes = await request(app)
+      .post('/api/franchise')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: franchiseName, admins: [{ email: adminUser.email }] });
+
+    expect(franchiseRes.status).toBe(200);
+    franchiseId = franchiseRes.body.id;
+
+    const storeRes = await request(app)
+      .post(`/api/franchise/${franchiseId}/store`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: storeName });
+
+    expect(storeRes.status).toBe(200);
+    expect(storeRes.body.name).toBe(storeName);
+    expect(createStore).toHaveBeenCalledWith(franchiseId, { name: storeName });
+
+    const deleteRes = await request(app)
+      .delete(`/api/franchise/${franchiseId}/store/${storeRes.body.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(deleteRes.status).toBe(200);
+    expect(deleteStore).toHaveBeenCalledWith(franchiseId, storeRes.body.id);
+  } finally {
+    createStore.mockRestore();
+    deleteStore.mockRestore();
+    if (franchiseId) {
+      await DB.deleteFranchise(franchiseId);
+    }
+  }
 });
 
