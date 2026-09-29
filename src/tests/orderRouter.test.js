@@ -37,46 +37,105 @@ test ('get order from database', async () => {
     expect(orderRes.body).toEqual(expect.objectContaining({ orders: expect.any(Array) }));
 });
 
-test('user can order an existing menu pizza', async () => {
-  const menuResponse = await request(app).get('/api/order/menu');
-  expect(menuResponse.status).toBe(200);
-  expect(menuResponse.body.length).toBeGreaterThan(0);
 
-  const menuItem = menuResponse.body[0];
+test('user can order an existing menu pizza', async () => {
+  let orderId;
+  let menuId;
+
+  const connection = await DB.getConnection();
+
   const factoryFetch = jest.spyOn(global, 'fetch').mockResolvedValue({
     ok: true,
-    json: async () => ({ reportUrl: 'https://example.test/report', jwt: 'test-jwt' }),
+    json: async () => ({
+      reportUrl: 'https://example.test/report',
+      jwt: 'test-jwt',
+    }),
   });
-  let orderId;
 
   try {
+    const menuResult = await DB.query(
+      connection,
+      'INSERT INTO menu (title, image, price, description) VALUES (?, ?, ?, ?)',
+      [
+        'Test Pizza',
+        'https://example.com/test-pizza.jpg',
+        10.99,
+        'A test pizza for the order test',
+      ]
+    );
+
+    menuId = menuResult.insertId;
+
+    const menuResponse = await request(app).get('/api/order/menu');
+
+    expect(menuResponse.status).toBe(200);
+    expect(menuResponse.body.length).toBeGreaterThan(0);
+
+    const menuItem = menuResponse.body.find(
+      item => item.id === menuId
+    );
+
+    expect(menuItem).toBeDefined();
+
     const response = await request(app)
       .post('/api/order')
       .set('Authorization', `Bearer ${testUserAuthToken}`)
       .send({
         franchiseId: 1,
         storeId: 1,
-        items: [{ menuId: menuItem.id, description: menuItem.title, price: menuItem.price }],
+        items: [
+        {
+            menuId: menuItem.id,
+            description: menuItem.title,
+            price: menuItem.price,
+          },
+        ],
       });
 
     expect(response.status).toBe(200);
-    expect(response.body.order).toEqual(expect.objectContaining({
-      items: [expect.objectContaining({ menuId: menuItem.id, description: menuItem.title })],
-    }));
+
+    expect(response.body.order).toEqual(
+      expect.objectContaining({
+        items: [
+          expect.objectContaining({
+            menuId: menuItem.id,
+            description: menuItem.title,
+          }),
+        ],
+      })
+    );
+
     orderId = response.body.order.id;
   } finally {
     factoryFetch.mockRestore();
-    const connection = await DB.getConnection();
-    try {
-      if (orderId) {
-        await DB.query(connection, 'DELETE FROM orderItem WHERE orderId=?', [orderId]);
-        await DB.query(connection, 'DELETE FROM dinerOrder WHERE id=?', [orderId]);
-      }
-    } finally {
-      connection.end();
+
+    if (orderId) {
+      await DB.query(
+        connection,
+        'DELETE FROM orderItem WHERE orderId=?',
+        [orderId]
+      );
+
+      await DB.query(
+        connection,
+        'DELETE FROM dinerOrder WHERE id=?',
+        [orderId]
+      );
     }
+
+    if (menuId) {
+      await DB.query(
+        connection,
+        'DELETE FROM menu WHERE id=?',
+        [menuId]
+      );
+    }
+
+    connection.end();
   }
 });
+
+
 
 test("admin can add 'Spiciest pizza' to the menu", async () => {
   const menuTitle = 'Spiciest pizza';
