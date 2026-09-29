@@ -86,6 +86,23 @@ test('admin can create, list, and delete franchises', async () => {
   expect(deleteRes.body).toEqual({ message: 'franchise deleted' });
 });
 
+test('admin can get a user franchises through the franchise router', async () => {
+  const franchises = [{ id: 12, name: 'Test Franchise' }];
+  const getUserFranchises = jest.spyOn(DB, 'getUserFranchises').mockResolvedValue(franchises);
+
+  try {
+    const response = await request(app)
+      .get('/api/franchise/42')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(franchises);
+    expect(getUserFranchises).toHaveBeenCalledWith(42);
+  } finally {
+    getUserFranchises.mockRestore();
+  }
+});
+
 test("admin can create and delete a store named World's Greatest Pizza", async () => {
   const franchiseName = `Pizza ${randomName()}`;
   const storeName = "World's Greatest Pizza";
