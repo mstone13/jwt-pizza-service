@@ -143,3 +143,26 @@ test("admin can create and delete a store named World's Greatest Pizza", async (
   }
 });
 
+test('delete user', async () => {
+  const testUser = {
+    name: 'pizza diner',
+    email: `${randomName()}@test.com`,
+    password: 'a',
+  };
+  const registerRes = await request(app).post('/api/auth').send(testUser);
+  expect(registerRes.status).toBe(200); 
+
+  const userId = registerRes.body.user.id;
+
+  const deleteUserRes = await request(app)
+    .delete(`/api/user/${userId}`)
+    .set('Authorization', 'Bearer ' + adminToken);
+  expect(deleteUserRes.status).toBe(200);
+
+  const listUsersRes = await request(app)
+  .get('/api/user')
+  .set('Authorization', 'Bearer ' + adminToken);
+
+  expect(listUsersRes.status).toBe(200);
+  expect(listUsersRes.body.users.some(user => user.id === userId)).toBe(false);
+});

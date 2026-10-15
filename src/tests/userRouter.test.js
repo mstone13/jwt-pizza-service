@@ -47,6 +47,13 @@ test('list users', async () => {
   expect(listUsersRes.status).toBe(200);
 });
 
+test('delete user unauthorized', async () => {
+  const deleteRes = await request(app)
+    .delete('/api/user/USER_ID');
+
+  expect(deleteRes.status).toBe(401);
+});
+
 async function registerUser(service) {
   const testUser = {
     name: 'pizza diner',
