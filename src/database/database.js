@@ -99,6 +99,17 @@ class DB {
     }
   }
 
+  async listUsers(page = 0, limit = 10) {
+    const connection = await this.getConnection();
+    const offset = page * limit;
+    try {
+      const users = await this.query(connection, `SELECT id, name, email FROM user LIMIT ${limit + 1} OFFSET ${offset}`); 
+      return users;
+    } finally {
+      connection.end();
+    }
+  }
+
   async loginUser(userId, token) {
     token = this.getTokenSignature(token);
     const connection = await this.getConnection();
