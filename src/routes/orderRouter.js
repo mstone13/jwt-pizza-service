@@ -5,6 +5,7 @@ const { authRouter } = require('./authRouter.js');
 const { asyncHandler, StatusCodeError } = require('../endpointHelper.js');
 
 const orderRouter = express.Router();
+const metrics = require('../metrics.js');
 
 orderRouter.docs = [
   {
@@ -79,18 +80,35 @@ orderRouter.post(
   asyncHandler(async (req, res) => {
     const orderReq = req.body;
     const order = await DB.addDinerOrder(req.user, orderReq);
-    const r = await fetch(`${config.factory.url}/api/order`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', authorization: `Bearer ${config.factory.apiKey}` },
-      body: JSON.stringify({ diner: { id: req.user.id, name: req.user.name, email: req.user.email }, order }),
-    });
-    const j = await r.json();
-    if (r.ok) {
-      res.send({ order, followLinkToEndChaos: j.reportUrl, jwt: j.jwt });
-    } else {
-      res.status(500).send({ message: 'Failed to fulfill order at factory', followLinkToEndChaos: j.reportUrl });
+    const orderEvent = {
+      count: order.items.length,
+      revenue: order.items.reduce((acc, curr) => acc + curr.price, 0),
+      start: Date.now(),
+      error: false,
+    };
+
+    try {
+      const r = await fetch(`${config.factory.url}/api/order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${config.factory.apiKey}` },
+        body: JSON.stringify({ diner: { id: req.user.id, name: req.user.name, email: req.user.email }, order }),
+      });
+      const j = await r.json();
+      if (r.ok) {
+        res.send({ order, followLinkToEndChaos: j.reportUrl, jwt: j.jwt });
+      } else {
+        orderEvent.error = true;
+        res.status(500).send({ message: 'Failed to fulfill order at factory', followLinkToEndChaos: j.reportUrl });
+      }
+    } catch (err) {
+      orderEvent.error = true;
+      throw err;
+    } finally {
+      orderEvent.end = Date.now();
+      metrics.orderEvent(orderEvent);
     }
   })
 );
+
 
 module.exports = orderRouter;
