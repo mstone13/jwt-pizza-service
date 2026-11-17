@@ -6,6 +6,7 @@ const { asyncHandler, StatusCodeError } = require('../endpointHelper.js');
 
 const orderRouter = express.Router();
 const metrics = require('../metrics.js');
+const logger = require('../logger.js');
 
 orderRouter.docs = [
   {
@@ -80,7 +81,9 @@ orderRouter.post(
   asyncHandler(async (req, res) => {
     const orderReq = req.body;
     const order = await DB.addDinerOrder(req.user, orderReq);
+
     const orderEvent = {
+      userId: req.user.id,
       count: order.items.length,
       revenue: order.items.reduce((acc, curr) => acc + curr.price, 0),
       start: Date.now(),
@@ -88,23 +91,66 @@ orderRouter.post(
     };
 
     try {
+      const factoryRequest = {
+        diner: {
+          id: req.user.id,
+          name: req.user.name,
+          email: req.user.email
+        },
+        order
+      };
+
       const r = await fetch(`${config.factory.url}/api/order`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${config.factory.apiKey}` },
-        body: JSON.stringify({ diner: { id: req.user.id, name: req.user.name, email: req.user.email }, order }),
+        headers: {
+          'Content-Type': 'application/json',
+          authorization: `Bearer ${config.factory.apiKey}`
+        },
+        body: JSON.stringify(factoryRequest),
       });
+
       const j = await r.json();
+
+      // Log factory request and response
+      logger.log(r.ok ? 'info' : 'error', 'factory', {
+        userId: req.user.id,
+        request: factoryRequest,
+        response: j,
+        statusCode: r.status
+      });
+
       if (r.ok) {
-        res.send({ order, followLinkToEndChaos: j.reportUrl, jwt: j.jwt });
+        res.send({
+          order,
+          followLinkToEndChaos: j.reportUrl,
+          jwt: j.jwt
+        });
       } else {
         orderEvent.error = true;
-        res.status(500).send({ message: 'Failed to fulfill order at factory', followLinkToEndChaos: j.reportUrl });
+        res.status(500).send({
+          message: 'Failed to fulfill order at factory',
+          followLinkToEndChaos: j.reportUrl
+        });
       }
     } catch (err) {
       orderEvent.error = true;
+
+      logger.log('error', 'factory', {
+        userId: req.user.id,
+        event: 'factory_request_failed',
+        error: err.message
+      });
+
       throw err;
     } finally {
       orderEvent.end = Date.now();
+
+      logger.log(
+        orderEvent.error ? 'error' : 'info',
+        'order',
+        orderEvent
+      );
+
       metrics.orderEvent(orderEvent);
     }
   })
