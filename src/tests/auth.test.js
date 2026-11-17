@@ -27,15 +27,4 @@ test('registered user can get the Crusty pizza from the menu', async () => {
     .set('Authorization', `Bearer ${testUserAuthToken}`);
 
   expect(menuRes.status).toBe(200);
-  
-  // expect(menuRes.body).toEqual(
-  //   expect.arrayContaining([
-  //     expect.objectContaining({
-  //       title: 'Crusty',
-  //       description: 'A dry mouthed favorite',
-  //       image: 'pizza4.png',
-  //       price: 0.0028,
-  //     }),
-  //   ])
-  // );
 });

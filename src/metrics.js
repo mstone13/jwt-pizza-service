@@ -1,5 +1,6 @@
 const os = require('os');
 const config = require('./config.js');
+const logger = require('./logger.js');
 
 const ACTIVE_USER_WINDOW_MS = 5 * 60 * 1000;
 
@@ -59,6 +60,7 @@ sendMetricsPeriodically(period) {
         this.sendMetricsToGrafana(this.getMetrics());
       } catch (error) {
         console.error('Error sending metrics:', error);
+        logger.log('error', 'metrics', { msg: 'Error sending metrics', err: { msg: error.message, stack: error.stack } });
       }
     }, period);
  
